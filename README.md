@@ -1,4 +1,4 @@
-# Deep Dive: Solana Message Signing with Ed25519
+# Solana Message Signing with Ed25519
 
 ## Cryptographic Foundations
 
