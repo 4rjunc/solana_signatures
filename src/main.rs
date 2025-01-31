@@ -1,41 +1,64 @@
-use std::str::FromStr;
-
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{Keypair, Signature, Signer},
+use ed25519_dalek::{
+    Signature as DalekSignature, Signer as DalekSigner, SigningKey, Verifier, VerifyingKey,
 };
+use solana_sdk::signature::{Keypair, Signer};
 
-// Signing function
-fn sign_message(message: &[u8], keypair: &Keypair) -> String {
-    let signature = keypair.sign_message(message);
-
-    signature.to_string()
+struct MessageSigner {
+    keypair: Keypair,
 }
 
-// Verify Signature
-fn verify_signature(
-    message: &[u8],
-    signature_str: &str,
-    public_key_str: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let signature = Signature::from_str(signature_str)?;
+impl MessageSigner {
+    fn new() -> Self {
+        Self {
+            keypair: Keypair::new(),
+        }
+    }
 
-    let public_key = Pubkey::from_str(public_key_str)?;
+    fn sign_message_detailed(&self, message: &[u8]) -> Vec<u8> {
+        // Convert Solana keypair's secret to ed25519_dalek signing key
+        let secret_bytes = self.keypair.secret().to_bytes();
+        let signing_key = SigningKey::from_bytes(&secret_bytes);
 
-    Ok(signature.verify(&public_key.as_ref(), message))
+        // Sign the message using ed25519 algorithm
+        let dalek_signature: DalekSignature = signing_key.sign(message);
+
+        // Return raw signature bytes
+        dalek_signature.to_bytes().to_vec()
+    }
+
+    fn verify_signature(&self, message: &[u8], signature_bytes: &[u8]) -> bool {
+        // Get the public key from the keypair
+        let pubkey = self.keypair.pubkey();
+
+        // Convert public key to verifying key
+        let verifying_key =
+            VerifyingKey::from_bytes(&pubkey.to_bytes()).expect("Invalid public key");
+
+        // Convert signature bytes to a fixed-size array
+        let signature_array: [u8; 64] = signature_bytes
+            .try_into()
+            .expect("Signature bytes must be exactly 64 bytes long");
+
+        // Convert signature array to Ed25519 signature
+        let signature = DalekSignature::from_bytes(&signature_array);
+
+        // Verify the signature
+        verifying_key.verify(message, &signature).is_ok()
+    }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //Sign a message
-    let message = b"Im a retarded dev";
-    let keypair = Keypair::new();
+fn main() {
+    let signer = MessageSigner::new();
 
-    let signature = sign_message(message, &keypair);
-    println!("Signature: {}", signature);
+    // Example message signing
+    let message = b"Solana Message Signing Demo";
 
-    // Verifying
-    let verification_result = verify_signature(message, &signature, &keypair.pubkey().to_string())?;
-    println!("Signature Verification Result: {}", verification_result);
+    // Perform detailed signing
+    let signature_bytes = signer.sign_message_detailed(message);
 
-    Ok(())
+    // Verify the signature
+    let is_valid = signer.verify_signature(message, &signature_bytes);
+
+    println!("Signature Valid: {}", is_valid);
+    println!("Raw Signature Bytes: {:?}", signature_bytes);
 }
